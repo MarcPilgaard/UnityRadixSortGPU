@@ -1,0 +1,191 @@
+﻿#pragma kernel IdentifyBits
+#pragma kernel Upsweep
+#pragma kernel DownSweep
+
+#pragma kernel PopulateOutputBufferWithZeroes
+
+#pragma kernel FlipNegatives
+#pragma kernel SetLastIndexToZero
+
+#define LINEAR_THREAD_GROUP_SIZE 1024
+#define GROUP_SHARED_MEMORY_SIZE 2048
+#define LOCAL_MEMORY_SIZE 2176 //2048 + PADDING (4 = 128)
+#define PADDING 4
+
+StructuredBuffer<int> bufferOne;
+RWStructuredBuffer<int> bufferTwo;
+RWStructuredBuffer<uint> prefixSum;
+RWStructuredBuffer<uint> largestNumber;
+
+groupshared uint localPrefix[LOCAL_MEMORY_SIZE];
+
+cbuffer ConstantSortParameters
+{
+	uint level = 0;
+	uint lastIndex = 0;
+
+	uint fromStride = 0;
+	uint junkIterations = 0;
+	uint junkPadding = 0;
+	uint previousJunkPadding = 0;
+}
+
+int FirstBit(int val)
+{
+	return ((val >> level) & 1);
+}
+
+bool IsBitOne(int val)
+{
+	return FirstBit(val) == 1;
+}
+
+[numthreads(LINEAR_THREAD_GROUP_SIZE, 1, 1)]
+void IdentifyBits(uint3 id : SV_DispatchThreadID)
+{
+	prefixSum[id.x] = FirstBit(bufferOne[id.x]) == 0 ? 1 : 0;
+}
+
+[numthreads(1, 1, 1)]
+void SetLastIndexToZero(uint3 id : SV_DispatchThreadID)
+{
+	prefixSum[lastIndex] = 0;
+}
+
+uint2 GetGlobalIndexes(int groupThread_id, int group_id)
+{
+	int dIdx = groupThread_id * fromStride - 1 + group_id * GROUP_SHARED_MEMORY_SIZE;
+	uint fromStrideBase = (fromStride >> 1);
+	uint globalMin = dIdx + fromStrideBase;
+	uint globalMax = dIdx + fromStride;
+
+	int junkPaddingStride = fromStrideBase * junkPadding;
+
+	globalMin = globalMin - junkPaddingStride - previousJunkPadding;
+	globalMax = globalMax - junkPaddingStride - previousJunkPadding;
+	return uint2(globalMin, globalMax);
+}
+
+uint2 GetLocalStrideIndexes(int id, int stride)
+{
+	int idx = id * stride - 1;
+	uint lowestIndex = idx + (stride >> 1);
+	uint largestIndex = idx + stride;
+
+	lowestIndex += (lowestIndex >> PADDING);
+	largestIndex += (largestIndex >> PADDING);
+
+	//lowestIndex += CONFLICT_FREE_OFFSET(lowestIndex);
+	//largestIndex += CONFLICT_FREE_OFFSET(largestIndex);
+
+	return uint2(lowestIndex, largestIndex);
+}
+
+uint3 GetGlobalToLocalIndexes(uint groupThread_id, uint id, uint globalMin, uint globalMax)
+{
+	uint localMin = groupThread_id * 2;
+	uint localMax = localMin + 1;
+
+	int applyJunkValue = step(junkIterations, id);
+
+	localMin += (localMin >> PADDING);
+	localMax += (localMax >> PADDING);
+
+	//localMin += CONFLICT_FREE_OFFSET(localMin);
+	//localMax += CONFLICT_FREE_OFFSET(localMax);
+
+	localPrefix[localMin] = prefixSum[globalMin] * applyJunkValue;
+	localPrefix[localMax] = prefixSum[globalMax] * applyJunkValue;
+
+	return uint3(localMin, localMax, junkIterations);
+}
+
+[numthreads(GROUP_SHARED_MEMORY_SIZE / 2, 1, 1)]
+void Upsweep(uint3 id : SV_DispatchThreadID, uint3 groupThread_id : SV_GroupThreadID, uint3 group_id : SV_GroupID)
+{
+	uint2 globalIndex = GetGlobalIndexes(groupThread_id.x, group_id.x);
+	uint3 localParameters = GetGlobalToLocalIndexes(groupThread_id.x, id.x, globalIndex.x, globalIndex.y);
+
+	//We don't need to group sync here because the threads used to populate the local memory from device memory is also the same threads
+	//to be used for the first stride.
+	GroupMemoryBarrierWithGroupSync();
+
+	for (uint stepUp = 2; stepUp <= GROUP_SHARED_MEMORY_SIZE; stepUp = (stepUp << 1))
+	{
+		if (groupThread_id.x < (GROUP_SHARED_MEMORY_SIZE / stepUp))
+		{
+			uint2 indexes = GetLocalStrideIndexes(groupThread_id.x, stepUp);
+			localPrefix[indexes.y] += localPrefix[indexes.x];
+		}
+
+		if (stepUp >= 32 && groupThread_id.x > 32)
+			GroupMemoryBarrierWithGroupSync();
+	}
+
+	if (id.x >= localParameters.z)
+	{
+		prefixSum[globalIndex.x] = localPrefix[localParameters.x];
+		prefixSum[globalIndex.y] = localPrefix[localParameters.y];
+	}
+}
+
+[numthreads(GROUP_SHARED_MEMORY_SIZE / 2, 1, 1)]
+void DownSweep(uint3 id : SV_DispatchThreadID, uint3 groupThread_id : SV_GroupThreadID, uint3 group_id : SV_GroupID)
+{
+	uint2 globalIndex = GetGlobalIndexes(groupThread_id.x, group_id.x);
+	uint3 localParameters = GetGlobalToLocalIndexes(groupThread_id.x, id.x, globalIndex.x, globalIndex.y);
+
+	GroupMemoryBarrierWithGroupSync();
+
+	for (uint stepDown = GROUP_SHARED_MEMORY_SIZE; stepDown >= 2; stepDown = (stepDown >> 1))
+	{
+		if (groupThread_id.x < (GROUP_SHARED_MEMORY_SIZE / stepDown))
+		{
+			uint2 indexes = GetLocalStrideIndexes(groupThread_id.x, stepDown);
+			uint largestValue = localPrefix[indexes.y];
+			uint t = localPrefix[indexes.x];
+			localPrefix[indexes.x] = largestValue;
+			localPrefix[indexes.y] = t + largestValue;
+		}
+
+		//If stride is below 32 threads will not race with each other due to warps being of 32 threads
+		if (stepDown >= 32 && groupThread_id.x > 32)
+			GroupMemoryBarrierWithGroupSync();
+	}
+
+	if (id.x >= localParameters.z)
+	{
+		prefixSum[globalIndex.x] = localPrefix[localParameters.x];
+		prefixSum[globalIndex.y] = localPrefix[localParameters.y];
+	}
+}
+
+[numthreads(LINEAR_THREAD_GROUP_SIZE, 1, 1)]
+void PopulateOutputBufferWithZeroes(uint3 id : SV_DispatchThreadID)
+{
+	if (id.x > lastIndex)
+		return;
+
+	int bufferValue = bufferOne[id.x];
+	int stepResult = FirstBit(bufferValue);
+	int idx = (((id.x - prefixSum[id.x]) + prefixSum[lastIndex] + (1 - FirstBit(bufferOne[lastIndex])))) * stepResult + (1 - stepResult) * prefixSum[id.x];
+	bufferTwo[idx] = bufferValue;
+
+	if(id.x == 0)
+	largestNumber[0] = IsBitOne(bufferOne[lastIndex]);
+}
+
+[numthreads(LINEAR_THREAD_GROUP_SIZE, 1, 1)]
+void FlipNegatives(uint3 id : SV_DispatchThreadID)
+{
+	if (id.x <= lastIndex)
+	{
+		int count = lastIndex + 1;
+		int amountOfNegativeValues = count - (1 + prefixSum[lastIndex] - largestNumber[0]);
+		int firstNegativeIndex = count - amountOfNegativeValues;
+		int stepResult = step(firstNegativeIndex, id.x);
+		int countMinusFirstNegativeIndex = count - firstNegativeIndex;
+		int bufferTwoIndex = (countMinusFirstNegativeIndex - (id.x - firstNegativeIndex) - 1) * stepResult + (id.x + countMinusFirstNegativeIndex) * (1 - stepResult);
+		bufferTwo[bufferTwoIndex] = bufferOne[id.x];
+	}
+}
