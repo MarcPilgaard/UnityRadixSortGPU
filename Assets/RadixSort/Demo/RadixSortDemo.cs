@@ -36,7 +36,7 @@ public class RadixSortDemo : MonoBehaviour
         compareWithOrderBy = GUI.Toggle(new Rect(10, height += 20, 300, 20), compareWithOrderBy, "Compare with List.OrderBy");
         compareWithArraySort = GUI.Toggle(new Rect(10, height += 20, 300, 20), compareWithArraySort, "Compare with Array.Sort");
         //compareWithRandomSort = GUI.Toggle(new Rect(10, height += 20, 300, 20), compareWithRandomSort, "Compare with Random Sort");
-        //fullSort = GUI.Toggle(new Rect(10, height += 20, 300, 20), fullSort, "Perform Full Sort");
+        fullSort = GUI.Toggle(new Rect(10, height += 20, 300, 20), fullSort, "Perform Full Sort");
         //saveResultIntoCSV = GUI.Toggle(new Rect(10, height += 20, 300, 20), saveResultIntoCSV, "Save Result Into CSV");
 
         string sortingCountFieldData = GUI.TextField(new Rect(10, height += 20, 100, 20), sortingCount.ToString());
@@ -97,7 +97,7 @@ public class RadixSortDemo : MonoBehaviour
                 }
                 else
                 {
-                    for (int j = 1; j <= sortingCount; j++)
+                    for (int j = 1; j <= sortingCount; j += UnityEngine.Random.Range(1000, 10000))
                         allResultsSingleSort.Add(sortsToExecute[i](GenerateRandomValues(j)));
                 }
 

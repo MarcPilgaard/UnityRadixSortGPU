@@ -106,8 +106,6 @@ void Upsweep(uint3 id : SV_DispatchThreadID, uint3 groupThread_id : SV_GroupThre
 	uint2 globalIndex = GetGlobalIndexes(groupThread_id.x, group_id.x);
 	uint3 localParameters = GetGlobalToLocalIndexes(groupThread_id.x, id.x, globalIndex.x, globalIndex.y);
 
-	//We don't need to group sync here because the threads used to populate the local memory from device memory is also the same threads
-	//to be used for the first stride.
 	GroupMemoryBarrierWithGroupSync();
 
 	for (uint stepUp = 2; stepUp <= GROUP_SHARED_MEMORY_SIZE; stepUp = (stepUp << 1))
@@ -118,7 +116,8 @@ void Upsweep(uint3 id : SV_DispatchThreadID, uint3 groupThread_id : SV_GroupThre
 			localPrefix[indexes.y] += localPrefix[indexes.x];
 		}
 
-		if (stepUp >= 32 && groupThread_id.x > 32)
+		//if (stepUp >= 32 && groupThread_id.x > 32)
+		if (stepUp == 32)
 			GroupMemoryBarrierWithGroupSync();
 	}
 
@@ -149,7 +148,8 @@ void DownSweep(uint3 id : SV_DispatchThreadID, uint3 groupThread_id : SV_GroupTh
 		}
 
 		//If stride is below 32 threads will not race with each other due to warps being of 32 threads
-		if (stepDown >= 32 && groupThread_id.x > 32)
+		if(stepDown == 32)
+		//if (stepDown >= 32 && groupThread_id.x > 32)
 			GroupMemoryBarrierWithGroupSync();
 	}
 
