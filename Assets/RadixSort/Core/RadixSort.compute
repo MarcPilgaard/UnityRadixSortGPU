@@ -24,6 +24,7 @@ cbuffer ConstantSortParameters
 	uint level = 0;
 	uint lastIndex = 0;
 
+	
 	uint fromStride = 0;
 	uint junkIterations = 0;
 	uint junkPadding = 0;
@@ -106,21 +107,73 @@ void Upsweep(uint3 id : SV_DispatchThreadID, uint3 groupThread_id : SV_GroupThre
 	uint2 globalIndex = GetGlobalIndexes(groupThread_id.x, group_id.x);
 	uint3 localParameters = GetGlobalToLocalIndexes(groupThread_id.x, id.x, globalIndex.x, globalIndex.y);
 
+	uint2 indexes = GetLocalStrideIndexes(groupThread_id.x, 2);
+	localPrefix[indexes.y] += localPrefix[indexes.x];
+
 	GroupMemoryBarrierWithGroupSync();
-
-	for (uint stepUp = 2; stepUp <= GROUP_SHARED_MEMORY_SIZE; stepUp = (stepUp << 1))
+	if (groupThread_id.x < 512)
 	{
-		if (groupThread_id.x < (GROUP_SHARED_MEMORY_SIZE / stepUp))
-		{
-			uint2 indexes = GetLocalStrideIndexes(groupThread_id.x, stepUp);
-			localPrefix[indexes.y] += localPrefix[indexes.x];
-		}
-
-		//if (stepUp >= 32 && groupThread_id.x > 32)
-		if (stepUp == 32)
-			GroupMemoryBarrierWithGroupSync();
+		indexes = GetLocalStrideIndexes(groupThread_id.x, 4);
+		localPrefix[indexes.y] += localPrefix[indexes.x];
 	}
 
+	GroupMemoryBarrierWithGroupSync();
+	if (groupThread_id.x < 256)
+	{
+		indexes = GetLocalStrideIndexes(groupThread_id.x, 8);
+		localPrefix[indexes.y] += localPrefix[indexes.x];
+	}
+
+	GroupMemoryBarrierWithGroupSync();
+	if (groupThread_id.x < 128)
+	{
+		indexes = GetLocalStrideIndexes(groupThread_id.x, 16);
+		localPrefix[indexes.y] += localPrefix[indexes.x];
+	}
+
+	GroupMemoryBarrierWithGroupSync();
+	if (groupThread_id.x < 64)
+	{
+		indexes = GetLocalStrideIndexes(groupThread_id.x, 32);
+		localPrefix[indexes.y] += localPrefix[indexes.x];
+	}
+	GroupMemoryBarrierWithGroupSync();
+	if (groupThread_id.x < 32)
+	{
+		indexes = GetLocalStrideIndexes(groupThread_id.x, 64);
+		localPrefix[indexes.y] += localPrefix[indexes.x];
+	}
+
+	if (groupThread_id.x < 16)
+	{
+		indexes = GetLocalStrideIndexes(groupThread_id.x, 128);
+		localPrefix[indexes.y] += localPrefix[indexes.x];
+	}
+
+	if (groupThread_id.x < 8)
+	{
+		indexes = GetLocalStrideIndexes(groupThread_id.x, 256);
+		localPrefix[indexes.y] += localPrefix[indexes.x];
+	}
+
+	if (groupThread_id.x < 4)
+	{
+		indexes = GetLocalStrideIndexes(groupThread_id.x, 512);
+		localPrefix[indexes.y] += localPrefix[indexes.x];
+	}
+
+	if (groupThread_id.x < 2)
+	{
+		indexes = GetLocalStrideIndexes(groupThread_id.x, 1024);
+		localPrefix[indexes.y] += localPrefix[indexes.x];
+	}
+
+	if (groupThread_id.x < 1)
+	{
+		indexes = GetLocalStrideIndexes(groupThread_id.x, 2048);
+		localPrefix[indexes.y] += localPrefix[indexes.x];
+	}
+	GroupMemoryBarrierWithGroupSync();
 	if (id.x >= localParameters.z)
 	{
 		prefixSum[globalIndex.x] = localPrefix[localParameters.x];
@@ -136,22 +189,104 @@ void DownSweep(uint3 id : SV_DispatchThreadID, uint3 groupThread_id : SV_GroupTh
 
 	GroupMemoryBarrierWithGroupSync();
 
-	for (uint stepDown = GROUP_SHARED_MEMORY_SIZE; stepDown >= 2; stepDown = (stepDown >> 1))
+	if (groupThread_id.x < 1)
 	{
-		if (groupThread_id.x < (GROUP_SHARED_MEMORY_SIZE / stepDown))
-		{
-			uint2 indexes = GetLocalStrideIndexes(groupThread_id.x, stepDown);
-			uint largestValue = localPrefix[indexes.y];
-			uint t = localPrefix[indexes.x];
-			localPrefix[indexes.x] = largestValue;
-			localPrefix[indexes.y] = t + largestValue;
-		}
-
-		//If stride is below 32 threads will not race with each other due to warps being of 32 threads
-		if(stepDown == 32)
-		//if (stepDown >= 32 && groupThread_id.x > 32)
-			GroupMemoryBarrierWithGroupSync();
+		uint2 indexes = GetLocalStrideIndexes(groupThread_id.x, 2048);
+		uint largestValue = localPrefix[indexes.y];
+		localPrefix[indexes.y] += localPrefix[indexes.x];
+		localPrefix[indexes.x] = largestValue;
 	}
+
+	if (groupThread_id.x < 2)
+	{
+		uint2 indexes = GetLocalStrideIndexes(groupThread_id.x, 1024);
+		uint largestValue = localPrefix[indexes.y];
+		localPrefix[indexes.y] += localPrefix[indexes.x];
+		localPrefix[indexes.x] = largestValue;
+	}
+
+	if (groupThread_id.x < 4)
+	{
+		uint2 indexes = GetLocalStrideIndexes(groupThread_id.x, 512);
+		uint largestValue = localPrefix[indexes.y];
+		localPrefix[indexes.y] += localPrefix[indexes.x];
+		localPrefix[indexes.x] = largestValue;
+	}
+
+	if (groupThread_id.x < 8)
+	{
+		uint2 indexes = GetLocalStrideIndexes(groupThread_id.x, 256);
+		uint largestValue = localPrefix[indexes.y];
+		localPrefix[indexes.y] += localPrefix[indexes.x];
+		localPrefix[indexes.x] = largestValue;
+	}
+
+	if (groupThread_id.x < 16)
+	{
+		uint2 indexes = GetLocalStrideIndexes(groupThread_id.x, 128);
+		uint largestValue = localPrefix[indexes.y];
+		localPrefix[indexes.y] += localPrefix[indexes.x];
+		localPrefix[indexes.x] = largestValue;
+	}
+
+	if (groupThread_id.x < 32)
+	{
+		uint2 indexes = GetLocalStrideIndexes(groupThread_id.x, 64);
+		uint largestValue = localPrefix[indexes.y];
+		localPrefix[indexes.y] += localPrefix[indexes.x];
+		localPrefix[indexes.x] = largestValue;
+	}
+
+	GroupMemoryBarrierWithGroupSync();
+
+	if (groupThread_id.x < 64)
+	{
+		uint2 indexes = GetLocalStrideIndexes(groupThread_id.x, 32);
+		uint largestValue = localPrefix[indexes.y];
+		localPrefix[indexes.y] += localPrefix[indexes.x];
+		localPrefix[indexes.x] = largestValue;
+	}
+
+	GroupMemoryBarrierWithGroupSync();
+
+	if (groupThread_id.x < 128)
+	{
+		uint2 indexes = GetLocalStrideIndexes(groupThread_id.x, 16);
+		uint largestValue = localPrefix[indexes.y];
+		localPrefix[indexes.y] += localPrefix[indexes.x];
+		localPrefix[indexes.x] = largestValue;
+	}
+
+	GroupMemoryBarrierWithGroupSync();
+
+	if (groupThread_id.x < 256)
+	{
+		uint2 indexes = GetLocalStrideIndexes(groupThread_id.x, 8);
+		uint largestValue = localPrefix[indexes.y];
+		localPrefix[indexes.y] += localPrefix[indexes.x];
+		localPrefix[indexes.x] = largestValue;
+	}
+
+	GroupMemoryBarrierWithGroupSync();
+
+	if (groupThread_id.x < 512)
+	{
+		uint2 indexes = GetLocalStrideIndexes(groupThread_id.x, 4);
+		uint largestValue = localPrefix[indexes.y];
+		localPrefix[indexes.y] += localPrefix[indexes.x];
+		localPrefix[indexes.x] = largestValue;
+	}
+
+	GroupMemoryBarrierWithGroupSync();
+
+	if (groupThread_id.x < 1024)
+	{
+		uint2 indexes = GetLocalStrideIndexes(groupThread_id.x, 2);
+		uint largestValue = localPrefix[indexes.y];
+		localPrefix[indexes.y] += localPrefix[indexes.x];
+		localPrefix[indexes.x] = largestValue;
+	}
+
 
 	if (id.x >= localParameters.z)
 	{
