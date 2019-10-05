@@ -29,6 +29,9 @@ cbuffer ConstantSortParameters
 	uint junkIterations = 0;
 	uint junkPadding = 0;
 	uint previousJunkPadding = 0;
+
+	uint lastPrefixValue = 0;
+	uint lastBufferOneValue = 0;
 }
 
 int FirstBit(int val)

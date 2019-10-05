@@ -23,12 +23,16 @@ public class RadixSort
     int IDjunkPadding;
     int IDpreviousJunkPadding;
 
+    int IDlastPrefixValue;
+    int IDlastBufferOneValue;
+
     int identifyBitsKernel;
     int upsweepKernel;
     int downsweepKernel;
     int populateOutputBufferWithZeroesKernel;
     int flipNegativeKernel;
     int setLastIndexToZeroKernel;
+
 
     int[] kernelsUsingSwapBuffers;
 
@@ -49,6 +53,8 @@ public class RadixSort
         IDjunkIterations = Shader.PropertyToID("junkIterations"); ;
         IDjunkPadding = Shader.PropertyToID("junkPadding"); ;
         IDpreviousJunkPadding = Shader.PropertyToID("previousJunkPadding");
+        IDlastPrefixValue = Shader.PropertyToID("lastPrefixValue");
+        IDlastBufferOneValue = Shader.PropertyToID("lastBufferOneValue");
 
         identifyBitsKernel = radixSort.FindKernel("IdentifyBits");
         upsweepKernel = radixSort.FindKernel("Upsweep");
@@ -61,6 +67,8 @@ public class RadixSort
         radixSort.SetBuffer(downsweepKernel, "largestNumber", largestNumberBuffer);
         radixSort.SetBuffer(populateOutputBufferWithZeroesKernel, "largestNumber", largestNumberBuffer);
         radixSort.SetBuffer(flipNegativeKernel, "largestNumber", largestNumberBuffer);
+
+
 
         kernelsUsingSwapBuffers = new int[]
         {
@@ -106,7 +114,9 @@ public class RadixSort
 
         currentBufferSize = count;
     }
-    
+
+    int[] a = new int[1];
+
     public void Sort(int count)
     {
         radixSort.SetInt("lastIndex", count - 1);
@@ -126,6 +136,10 @@ public class RadixSort
 
             //We calculate the prefix sum
             SweepRecursively(count, 2, 0);
+            
+
+            //prefixSumBuffer.GetData(a, 0, count - 1, 1);
+            //radixSort.SetInt(IDlastPrefixValue, a[0]);
 
             //We move values from our input buffer to our output buffer based on the calculated information in the prefix sum
             radixSort.Dispatch(populateOutputBufferWithZeroesKernel, linearThreadGroupSizeIterator, 1, 1);

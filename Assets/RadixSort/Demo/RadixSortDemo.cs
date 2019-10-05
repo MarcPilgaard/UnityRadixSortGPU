@@ -19,8 +19,8 @@ public class RadixSortDemo : MonoBehaviour
     bool fullSort = false;
     bool saveResultIntoCSV = false;
 
-    int sortingCount = 1000000;
-    int iterations = 1;
+    int sortingCount = 4000000;
+    int iterations = 20;
 
     enum SortingState
     {
